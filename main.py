@@ -24,7 +24,7 @@ from echo import *
 refresh_rate = 0.1
 port = 5670
 agent_name = "Human_Autopilot"
-device = "wlo1"
+device = "wlp3s0"
 verbose = False
 is_interrupted = False
 start_heading = None
@@ -99,8 +99,14 @@ def wait_for_start_action():
     print("Waiting for start.")
     
 def is_agent_on_and_aircraft_ready():
-    return agent.on_off_i and get_dref(iasDref) <= 0
+    return agent.on_off_i and agent.airspeed_i <= 0
 
+#anes
+def should_agent_climb():
+    return agent.on_off_i and agent.on_off_i_takeoff # and get_dref(altitudeDref) <= 1000
+
+def should_agent_rotate():
+    return agent.on_off_i and agent.on_off_i_cap #abs(agent.int_cap - get_dref(headingDref)) > tolerance #and get_dref(iasDref) >= agent.int_vr
 
 def acceleration_action():
     print("Full throttle! let's takeoff!")
@@ -111,10 +117,13 @@ def acceleration_action():
     alignment_thread.start()
 
 def is_vr_reached():
-    return get_dref(iasDref) >= agent.int_vr
+    return agent.airspeed_i >= 90
 
 def is_vs_positive():
-    return get_dref(verticalSpeedDref) > 20
+    return agent.vertical_speed_i > 20
+
+def is_safe_alt_reached():
+    return agent.int_alt >= 1500
 
 def rotation_action():
     print("VR reached. Rotate!")
@@ -125,6 +134,69 @@ def rotation_action():
 def climb_action():
     print("Climbing to safe altitude.")
 
+#anes defini 
+# heading;
+#def heading(target_degree):
+#    get plane s direction 
+#    if direction != target direction
+#        if guide.rotation < 20 degres :
+#            increase rotation 10 deg #val ajustable
+
+    
+def heading_pid(heading_target):
+    # Implement a PID controller for heading adjustment
+    kp = 0.1  # Proportional gain
+    ki = 0.01  # Integral gain
+    kd = 0.05  # Derivative gain
+    integral = 0
+    previous_error = 0
+    tolerance = 0.5  
+    while True:
+        current_heading = agent.heading_i
+        print(heading_target + "= heading target")
+        delta = heading_target - current_heading
+            
+        if abs(delta) < tolerance:
+            break
+            
+        integral += delta * refresh_rate
+        derivative = (delta - previous_error) / refresh_rate
+            
+        control_signal = kp * delta + ki * integral + kd * derivative
+            
+        igs.output_set_double("Controll_Roll", control_signal)
+            
+        previous_delta = delta
+        time.sleep(refresh_rate)
+            
+    # Stop aileron control when target heading is reached + need to get wings level send another command loop           
+
+def heading_action():
+    heading_thread = threading.Thread(target=heading_pid, args=agent.heading_target)
+    heading_thread.daemon = True
+    heading_thread.start()
+
+#anes defini fly and keep to safe altitude:
+
+def climb_to_safe_alt(Safe_Alt):
+    current_alt = agent.int_alt
+    alt_delta = Safe_Alt - current_alt
+    tolerance = 25
+    while abs(alt_delta) > tolerance:
+        #keep_aircraft_aligned()    
+        current_alt = agent.int_alt
+        alt_delta = Safe_Alt - current_alt
+        elevator = max( min( 0.01 * alt_delta , 0.5 ) , -0.5 )
+        igs.output_set_double("Control_Pitch", -elevator)
+        time.sleep(0.1)
+    print("Stabilized")
+        
+def climb_to_safe_action(Safe_Alt):
+    climb_thread = threading.Thread(target=climb_to_safe_alt, args=Safe_Alt)
+    climb_thread.daemon = True
+    climb_thread.start()
+
+
 # Create the states
 wait_for_start = State("WaitForstart")
 acceleration = State("Acceleration")
@@ -134,13 +206,19 @@ climb = State("Climb")
 # Create the transitions
 transition1 = Transition(wait_for_start, acceleration, acceleration_action, condition=is_agent_on_and_aircraft_ready)
 transition2 = Transition(acceleration, rotation, rotation_action, condition=is_vr_reached)
-transition3 = Transition(rotation_action, climb, climb_action, condition=is_vs_positive)
+#transition3 = Transition(rotation_action, climb, climb_action, condition=is_vs_positive)
+#anes
+transition4 = Transition(rotation_action, climb_to_safe_alt, climb_to_safe_action, condition=should_agent_climb) #is_vs_positive) # a la place de transition3
+transition5 = Transition(climb_to_safe_action, heading_pid, heading_action, condition=should_agent_rotate) #is_safe_alt_reached)
 
 # Create the FSM and add transitions
 fsm = FiniteStateMachine(wait_for_start)
 fsm.add_transition(transition1)
 fsm.add_transition(transition2)
-fsm.add_transition(transition3)
+#fsm.add_transition(transition3)
+
+fsm.add_transition(transition4)
+fsm.add_transition(transition5)
 
 def return_io_value_type_as_str(value_type):
     if value_type == igs.INTEGER_T:
@@ -201,12 +279,19 @@ def on_freeze_callback(is_frozen, my_data):
 # inputs
 
 def bool_input_callback(io_type, name, value_type, value, my_data):
-    igs.info(f"Input and output {name} written to {value}")
+    #igs.info(f"Input and output {name} written to {value}")
     agent_object = my_data
     assert isinstance(agent_object, Echo)
-    agent_object.on_off_i = value
-    igs.output_set_bool("On_Off", value)
-    
+    if name == "On_Off":
+        agent_object.on_off_i = value
+        print(agent.on_off_i)
+    if name == "On_Off_Takeoff":
+        agent.on_off_i_takeoff = value
+        print(agent.on_off_i_takeoff)
+    if name == "On_Off_Cap":
+        agent.on_off_i_cap = value
+        print(agent.on_off_i_cap)
+
 def integer_input_callback(io_type, name, value_type, value, my_data):
     igs.info(f"Input {name} written to {value}")
     agent_object = my_data
@@ -221,31 +306,33 @@ def integer_input_callback(io_type, name, value_type, value, my_data):
         agent_object.int_alt = value
 
 def double_input_callback(io_type, name, value_type, value, my_data):
-    igs.info(f"Input {name} written to {value}")
+    #igs.info(f"Input {name} written to {value}")
     agent_object = my_data
     assert isinstance(agent_object, Echo)
     if name == "Pitch":
-        agent_object.double_pitch = value
-
-def get_dref(arg, is_double=False):
-    with xpc.XPlaneConnect() as client:
-        #get a dref
-        dref = arg
-        myValue = client.getDREF(dref)
-        rounded_value = round(myValue[0], 1)
-        return rounded_value
+        agent_object.pitch_i = value
+    if name == "Heading":
+        agent_object.heading_i = value
+        #print(agent.heading_i)
+    if name == "Altitude":
+        agent_object.int_alt = value
+    if name == "Airspeed":
+        agent_object.airspeed_i = value
+    if name == "Vertical_Speed":
+        agent_object.vertical_speed_i = value
+    if name == "Roll":
+        agent_object.roll_i = value
 
 def set_to_thrust():
     global start_heading
-    with xpc.XPlaneConnect() as client:
-        # Stow landing gear using a dataref
-        start_heading = get_dref(headingDref)
-        print(f"Start heading: {start_heading}")
-        time.sleep(0.1)
-        print("Setting T/O thrust : ")
-        client.sendDREF(thrustDref, 1)
-        time.sleep(1)
-        client.sendDREF(parkBrakeDref, 0)
+    start_heading = agent.heading_i
+    print(f"Start heading: {start_heading}")
+    time.sleep(0.1)
+    print("Setting T/O thrust : ")
+    i = 0
+    igs.output_set_double("Thrust", 1)
+    time.sleep(3)
+    igs.output_set_double("Parking_Brake", 0)
         
 def keep_aircraft_aligned():
     global start_heading
@@ -258,55 +345,53 @@ def keep_aircraft_aligned():
     old_roll = 0
     time_old = time.time()
     old_heading = start_heading
-    with xpc.XPlaneConnect() as client:
-        while not is_interrupted:
-            current_heading = get_dref(headingDref)
-            diffYaw = current_heading - start_heading
-            deltayaw = current_heading - old_heading
-            time_current = time.time()
-            dt = time_current - time_old
-            time_old = time_current
-            deltaControlYaw = ky * deltayaw + kyi * diffYaw * dt
-            yaw_control = yaw_control_old + deltaControlYaw
-            client.sendDREF(rudderDref, - yaw_control)
-            old_heading = current_heading
-            yaw_control_old = yaw_control
-            time.sleep(0.05)
+    while not is_interrupted:
+        current_heading = agent.heading_i
+        diffYaw = current_heading - start_heading
+        deltayaw = current_heading - old_heading
+        time_current = time.time()
+        dt = time_current - time_old
+        time_old = time_current
+        deltaControlYaw = ky * deltayaw + kyi * diffYaw * dt
+        yaw_control = yaw_control_old + deltaControlYaw
+        igs.output_set_double("Control_Yaw", yaw_control)
+        old_heading = current_heading
+        yaw_control_old = yaw_control
+        time.sleep(0.05)
             
-            current_roll = get_dref(rollDref)
-            diffRoll = current_roll - 0
-            deltaRoll = current_roll - old_roll
-            time_current = time.time()
-            dt = time_current - time_old
-            time_old = time_current
-            deltaControlRoll = kyc * deltaRoll + kyic * diffRoll * dt
-            roll_control = roll_control_old + deltaControlRoll
-            client.sendDREF(aileronDref, - roll_control)
-            old_roll = current_roll
-            roll_control_old = roll_control
-            time.sleep(0.05)
+        current_roll = agent.roll_i
+        diffRoll = current_roll - 0
+        deltaRoll = current_roll - old_roll
+        time_current = time.time()
+        dt = time_current - time_old
+        time_old = time_current
+        deltaControlRoll = kyc * deltaRoll + kyic * diffRoll * dt
+        roll_control = roll_control_old + deltaControlRoll
+        igs.output_set_double("Control_Roll", roll_control)
+        old_roll = current_roll
+        roll_control_old = roll_control
+        time.sleep(0.05)
             
 def rotate_aircraft():
     ky = 0.06
     kyi = 0.14
     pitch_control_old = 0
     old_pitch = 0
-    target_pitch = agent.double_pitch
+    target_pitch = 10
     time_old = time.time()
-    with xpc.XPlaneConnect() as client:
-        while not is_interrupted:
-            current_pitch = get_dref(pitchDref)
-            diffPitch = current_pitch - target_pitch
-            deltaPitch = current_pitch - old_pitch
-            time_current = time.time()
-            dt = time_current - time_old
-            time_old = time_current
-            deltaControlPitch = ky * deltaPitch + kyi * diffPitch * dt
-            pitch_control = pitch_control_old + deltaControlPitch
-            client.sendDREF(elevatorDref, - pitch_control)
-            old_pitch = current_pitch
-            pitch_control_old = pitch_control
-            time.sleep(0.1)
+    while not is_interrupted:
+        current_pitch = agent.pitch_i
+        diffPitch = current_pitch - target_pitch
+        deltaPitch = current_pitch - old_pitch
+        time_current = time.time()
+        dt = time_current - time_old
+        time_old = time_current
+        deltaControlPitch = ky * deltaPitch + kyi * diffPitch * dt
+        pitch_control = pitch_control_old + deltaControlPitch
+        igs.output_set_double("Control_Pitch", -pitch_control)
+        old_pitch = current_pitch
+        pitch_control_old = pitch_control
+        time.sleep(0.1)
 
 
 # catch SIGINT handler before starting agent
@@ -348,20 +433,39 @@ igs.observe_agent_events(on_agent_event_callback, agent)
 igs.observe_freeze(on_freeze_callback, agent)
 
 igs.input_create("On_Off", igs.BOOL_T, None)
-igs.input_create("V1", igs.INTEGER_T, None)
-igs.input_create("VR", igs.INTEGER_T, None)
-igs.input_create("V2", igs.INTEGER_T, None)
 igs.input_create("Pitch", igs.DOUBLE_T, None)
-igs.input_create("Safe_Alt", igs.INTEGER_T, None)
+#anes
+igs.input_create("On_Off_Takeoff", igs.BOOL_T, None)
+igs.input_create("On_Off_Cap", igs.BOOL_T, None)
+igs.input_create("Heading", igs.DOUBLE_T, None)
+igs.input_create("Airspeed", igs.DOUBLE_T, None)
+igs.input_create("Altitude", igs.DOUBLE_T, None)
+igs.input_create("Vertical_Speed", igs.DOUBLE_T, None)
+igs.input_create("Roll", igs.DOUBLE_T, None)
+igs.input_create("Pitch", igs.DOUBLE_T, None)
+#keep_safe_alt prend Safe_Alt entree
 
-igs.output_create("On_Off", igs.BOOL_T, None)
+
+igs.output_create("Status", igs.STRING_T, None)
+igs.output_create("Control_Pitch", igs.DOUBLE_T, None)
+#anes
+igs.output_create("Control_Roll", igs.DOUBLE_T, None)
+igs.output_create("Control_Yaw", igs.DOUBLE_T, None)
+igs.output_create("Thrust", igs.DOUBLE_T, None)
+igs.output_create("Parking_Brake", igs.DOUBLE_T, None)
+
 
 igs.observe_input("On_Off", bool_input_callback, agent)
-igs.observe_input("V1", integer_input_callback, agent)
-igs.observe_input("VR", integer_input_callback, agent)
-igs.observe_input("V2", integer_input_callback, agent)
 igs.observe_input("Pitch", double_input_callback, agent)
-igs.observe_input("Safe_Alt", integer_input_callback, agent)
+#anes
+igs.observe_input("On_Off_Takeoff", bool_input_callback, agent)
+igs.observe_input("On_Off_Cap", bool_input_callback, agent)
+igs.observe_input("Heading", double_input_callback, agent)
+igs.observe_input("Altitude", double_input_callback, agent)
+igs.observe_input("Airspeed", double_input_callback, agent)
+igs.observe_input("Vertical_Speed", double_input_callback, agent)
+igs.observe_input("Roll",double_input_callback,agent)
+
 
 igs.log_set_console(True)
 igs.log_set_console_level(igs.LOG_INFO)

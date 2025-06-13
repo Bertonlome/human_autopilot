@@ -28,24 +28,78 @@ class Echo(metaclass=Singleton):
     def __init__(self):
         # inputs
         self.on_off_i = None
-        self.int_v1 = None
-        self.int_vr = 55
-        self.int_v2 = None
-        self.double_pitch = 7.5
         self.int_alt = None
-
+        self.heading_target = None
+        self.airspeed_i = None
+        self.heading_i = None
+        self.vertical_speed_i = None
+        #anes
+        self.on_off_i_takeoff = None
+        self.on_off_i_cap = None
+        self.roll_i = None
+        self.pitch_i = None
+        
+        
         # outputs
         self._on_off_o = None
+        self.control_pitch_o = None
+        self.control_yaw_o = None
+        self.control_roll_o = None
+        self.control_thrust_o = None
+        self.control_parking_brake_o = None
+        self.status_o = None
 
-    @property
-    def on_off_o(self):
-        return self._on_off_o
+        # Add setters and getters for outputs
+        @property
+        def control_pitch_o(self):
+            return self._control_pitch_o
 
-    @on_off_o.setter
-    def on_off_o(self, value):
-        self._on_off_o = value
-        if self._on_off_o is not None:
-            igs.output_set_bool("bool", self._on_off_o)
+        @control_pitch_o.setter
+        def control_pitch_o(self, value):
+            self._control_pitch_o = value
+            if self._control_pitch_o is not None:
+                igs.output_set_double("Control_Pitch", self._control_pitch_o)
+
+        @property
+        def control_yaw_o(self):
+            return self._control_yaw_o
+
+        @control_yaw_o.setter
+        def control_yaw_o(self, value):
+            self._control_yaw_o = value
+            if self._control_yaw_o is not None:
+                igs.output_set_double("Control_Yaw", self._control_yaw_o)
+
+        @property
+        def control_roll_o(self):
+            return self._control_roll_o
+
+        @control_roll_o.setter
+        def control_roll_o(self, value):
+            self._control_roll_o = value
+            if self._control_roll_o is not None:
+                igs.output_set_double("Control_Roll", self._control_roll_o)
+
+        @property
+        def control_thrust_o(self):
+            return self._control_thrust_o
+
+        @control_thrust_o.setter
+        def control_thrust_o(self, value):
+            self._control_thrust_o = value
+            if self._control_thrust_o is not None:
+                print("Applying Thrust !!!")
+                igs.output_set_double("Thrust", self._control_thrust_o)
+
+        @property
+        def control_parking_brake_o(self):
+            return self._control_parking_brake_o
+
+        @control_parking_brake_o.setter
+        def control_parking_brake_o(self, value):
+            self._control_parking_brake_o = value
+            if self._control_parking_brake_o is not None:
+                igs.output_set_bool("Parking_Brake", self._control_parking_brake_o)
 
     # services
     def receive_values(self, sender_agent_name, sender_agent_uuid, boolV, integer, double, string, data, token, my_data):
