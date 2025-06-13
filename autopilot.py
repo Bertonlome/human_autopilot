@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 #from pyqtgraph.Qt import QtCore, QtGui
 import time
 
-SPEED = 1.0 # this is the speed of the plane in XPlane, used to determine if we are on ground or not
+SPEED = 90 # this is the speed of the plane in XPlane, used to determine if we are on ground or not
 
 def normalize(value, min=-1, max=1):
     # if value = 700, and max = 20, return 20
@@ -35,9 +35,9 @@ altitude_PID = PID.PID(P, I, D)
 # setting the desired values
 # roll = 0 means wings level
 # pitch = 2 means slightly nose up, which is required for level flight
-desired_roll = 0
-desired_pitch = 2
-desired_altitude = 8000
+desired_roll = 15
+desired_pitch = 5
+desired_altitude = 1500
 
 # setting the PID set points with our desired values
 roll_PID.SetPoint = desired_roll
@@ -83,6 +83,7 @@ DREFs = ["sim/cockpit2/gauges/indicators/airspeed_kts_pilot",
 def monitor():
     global i
     global last_update
+    start = True
     with xpc.XPlaneConnect() as client:
         while True:
             
@@ -103,74 +104,82 @@ def monitor():
 
                 ## anes #############################################################################
                 # if the plane is on ground, set the park brake and throttle to 0
-                if (onground):  
+                if (start):  
                     client.sendDREF("sim/flightmodel/controls/parkbrake", 0.0)
                     client.sendDREF("sim/cockpit2/engine/actuators/throttle_ratio_all", 1.0)
+                    time.sleep(15)
+                    start = False
                 ####################################################################################
-
+                print(current_asi)
                 # update the display
 #                pg.QtGui.QApplication.processEvents()
+                if(current_asi > SPEED): # if the plane is moving, we can update the PIDs
+                    """ if(user_request_a_roll):
+                        get_requested_heading()
+                        bearing_difference = user_requested_heding - current_heading
+                    if(bearing_difference > marge_derreur):
+                        redresse l'avion()
+                    """
+                    # update outer loops first
+                    altitude_PID.update(current_altitude)
 
-                # update outer loops first
-                altitude_PID.update(current_altitude)
+                    # if alt=12000, setpoint = 10000, the error is 2000. if P=0.1, output will be 2000*0.1=200
+                    pitch_PID.SetPoint = normalize(altitude_PID.output, min=-15, max=5)
 
-                # if alt=12000, setpoint = 10000, the error is 2000. if P=0.1, output will be 2000*0.1=200
-                pitch_PID.SetPoint = normalize(altitude_PID.output, min=-15, max=10)
+                    # update PIDs
+                    roll_PID.update(current_roll)
+                    pitch_PID.update(current_pitch)
 
-                # update PIDs
-                roll_PID.update(current_roll)
-                pitch_PID.update(current_pitch)
+                    # update control outputs
+                    new_ail_ctrl = normalize(roll_PID.output)
+                    new_ele_ctrl = normalize(pitch_PID.output)
 
-                # update control outputs
-                new_ail_ctrl = normalize(roll_PID.output)
-                new_ele_ctrl = normalize(pitch_PID.output)
+                    # if we reach our data limit set point, evict old data and add new.
+                    # this helps keep the graph clean and prevents it from growing infinitely
+                    if(len(x_axis_counters) > plot_array_max_length):
+                        x_axis_counters.pop(0)
+                        roll_history.pop(0)
+                        roll_setpoint_history.pop(0)
+                        pitch_history.pop(0)
+                        pitch_setpoint_history.pop(0)
+                        altitude_history.pop(0)
+                        altitude_setpoint_history.pop(0)
 
-                # if we reach our data limit set point, evict old data and add new.
-                # this helps keep the graph clean and prevents it from growing infinitely
-                if(len(x_axis_counters) > plot_array_max_length):
-                    x_axis_counters.pop(0)
-                    roll_history.pop(0)
-                    roll_setpoint_history.pop(0)
-                    pitch_history.pop(0)
-                    pitch_setpoint_history.pop(0)
-                    altitude_history.pop(0)
-                    altitude_setpoint_history.pop(0)
+                        x_axis_counters.append(i)
+                        roll_history.append(current_roll)
+                        roll_setpoint_history.append(desired_roll)
+                        pitch_history.append(current_pitch)
+                        pitch_setpoint_history.append(pitch_PID.SetPoint)
+                        altitude_history.append(0)
+                        altitude_setpoint_history.append(desired_altitude)
+                    # else, just add new. we are not yet at limit.
+                    else:
+                        x_axis_counters.append(i)
+                        roll_history.append(current_roll)
+                        roll_setpoint_history.append(desired_roll)
+                        pitch_history.append(current_pitch)
+                        pitch_setpoint_history.append(pitch_PID.SetPoint)
+                        altitude_history.append(0)
+                        altitude_setpoint_history.append(desired_altitude)
+                    i = i + 1
 
-                    x_axis_counters.append(i)
-                    roll_history.append(current_roll)
-                    roll_setpoint_history.append(desired_roll)
-                    pitch_history.append(current_pitch)
-                    pitch_setpoint_history.append(pitch_PID.SetPoint)
-                    altitude_history.append(0)
-                    altitude_setpoint_history.append(desired_altitude)
-                # else, just add new. we are not yet at limit.
-                else:
-                    x_axis_counters.append(i)
-                    roll_history.append(current_roll)
-                    roll_setpoint_history.append(desired_roll)
-                    pitch_history.append(current_pitch)
-                    pitch_setpoint_history.append(pitch_PID.SetPoint)
-                    altitude_history.append(0)
-                    altitude_setpoint_history.append(desired_altitude)
-                i = i + 1
+    #                p1.plot(x_axis_counters, roll_history, pen=0, clear=True)
+    #                p1.plot(x_axis_counters, roll_setpoint_history, pen=1)
 
-#                p1.plot(x_axis_counters, roll_history, pen=0, clear=True)
-#                p1.plot(x_axis_counters, roll_setpoint_history, pen=1)
+    #                p2.plot(x_axis_counters, pitch_history, pen=0,clear=True)
+    #                p2.plot(x_axis_counters, pitch_setpoint_history, pen=1)
 
-#                p2.plot(x_axis_counters, pitch_history, pen=0,clear=True)
-#                p2.plot(x_axis_counters, pitch_setpoint_history, pen=1)
+    #                p3.plot(x_axis_counters, altitude_history, pen=0,clear=True)
+    #                p3.plot(x_axis_counters, altitude_setpoint_history, pen=1)
 
-#                p3.plot(x_axis_counters, altitude_history, pen=0,clear=True)
-#                p3.plot(x_axis_counters, altitude_setpoint_history, pen=1)
+                    # sending actual control values to XPlane
+                    ctrl = [new_ele_ctrl, new_ail_ctrl, 0.0, -998] # ele, ail, rud, thr. -998 means don't change
+                    client.sendCTRL(ctrl)
 
-                # sending actual control values to XPlane
-                ctrl = [new_ele_ctrl, new_ail_ctrl, 0.0, -998] # ele, ail, rud, thr. -998 means don't change
-                client.sendCTRL(ctrl)
-
-                output = f"current values --    roll: {current_roll: 0.3f},  pitch: {current_pitch: 0.3f}"
-                output = output + "\n" + f"PID outputs    --    roll: {roll_PID.output: 0.3f},  pitch: {pitch_PID.output: 0.3f}"
-                output = output + "\n"
-                print(output)
+                    output = f"current values --    roll: {current_roll: 0.3f},  pitch: {current_pitch: 0.3f}"
+                    output = output + "\n" + f"PID outputs    --    roll: {roll_PID.output: 0.3f},  pitch: {pitch_PID.output: 0.3f}"
+                    output = output + "\n"
+                    print(output)
 
 if __name__ == "__main__":
     monitor()
