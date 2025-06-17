@@ -139,16 +139,12 @@ def monitor():
                     # update control outputs
                     new_ail_ctrl = normalize(roll_PID.output)
                     new_ele_ctrl = normalize(pitch_PID.output)
-                    new_skid_ctrl = normalize(skid_PID.output,min=-20,max=20)
+                    new_skid_ctrl = normalize(skid_PID.output,min=-1,max=1)
 
                     # sending actual control values to XPlane
                     
-                    ctrl = [new_ele_ctrl, new_ail_ctrl, -998] # -998 pour ne pas changer le moteur
+                    ctrl = [new_ele_ctrl, new_ail_ctrl, new_skid_ctrl , -998] # -998 pour ne pas changer le moteur
                     client.sendCTRL(ctrl)
-                    client.sendDREF("sim/cockpit2/controls/rudder_ratio", new_skid_ctrl) # a test lequel est le meilleur
-                    
-                    if (current_altitude > 1700):
-                        client.sendDREF("sim/cockpit2/controls/rudder_ratio", 1)
 
 
                     output = f"current values --    roll: {current_roll: 0.3f},  pitch: {current_pitch: 0.3f}"
