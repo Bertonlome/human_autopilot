@@ -43,7 +43,9 @@ class PID:
         self.sample_time = 0.00
         self.current_time = current_time if current_time is not None else time.time()
         self.last_time = self.current_time
-
+        self.user_requested_heading = 45
+        self.user_request_a_roll = True
+        
         self.clear()
 
     def clear(self):
@@ -54,6 +56,9 @@ class PID:
         self.ITerm = 0.0
         self.DTerm = 0.0
         self.last_error = 0.0
+
+        self.user_requested_heading = 0.0
+        self.user_request_a_roll = 0.0
 
         # Windup Guard
         self.int_error = 0.0
@@ -127,3 +132,4 @@ class PID:
         Based on a pre-determined sampe time, the PID decides if it should compute or return immediately.
         """
         self.sample_time = sample_time
+        
