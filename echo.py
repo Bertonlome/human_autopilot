@@ -29,15 +29,21 @@ class Echo(metaclass=Singleton):
         # inputs
         self.on_off_i = None
         self.int_alt = None
-        self.heading_target = None
+        self.int_alt_target = None
+        self.heading_t_i = None
+
         self.airspeed_i = None
+        self.airspeed_t_i = None
         self.heading_i = None
         self.vertical_speed_i = None
+        self.vertical_speed_t_i = None
         #anes
         self.on_off_i_takeoff = None
         self.on_off_i_cap = None
         self.roll_i = None
+        self.roll_t_i = None 
         self.pitch_i = None
+        self.pitch_t_i = None
         
         
         # outputs
