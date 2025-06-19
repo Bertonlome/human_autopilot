@@ -13,7 +13,7 @@ SPEED = 90 # this is the speed of the plane in XPlane, used to determine if we a
 refresh_rate = 0.1
 port = 5670
 agent_name = "Human_Autopilot"
-device = "wlo1"
+device = "Local Area Connection* 10" # default device, can be changed in command line
 verbose = False
 is_interrupted = False
 start_heading = None
@@ -35,7 +35,7 @@ last_update = start
 # defining the initial PID values
 P_pitch = 0.1 # PID library default = 0.2
 P_roll = 0.01
-P_skid = 0.01
+P_skid = 0.1
 I_pitch = P_pitch/10 # default = 0
 I_roll = P_roll/10
 I_skid = P_skid/10
@@ -62,7 +62,7 @@ desired_skid = 0
 # # setting the PID set points with our desired values
 pitch_PID.SetPoint = desired_pitch
 altitude_PID.SetPoint = desired_altitude
-skid_PID.SetPoint = desired_skid
+rudder_PID.SetPoint = desired_skid
 
 # x_axis_counters = [] #0, 1, 2, 3, etc. just basic x-axis values used for plotting
 # roll_history = []
@@ -121,7 +121,7 @@ def monitor():
                 current_altitude = multi_DREFs[3][0]
                 current_asi = multi_DREFs[0][0]
                 onground = multi_DREFs[2][0]
-                current_rudder = ctrl[2]
+                current_rudder = client.getDREF("sim/joystick/yoke_heading_ratio")[0]
                 current_skid = client.getDREF("sim/cockpit2/gauges/indicators/slip_deg")[0]
                 print(f"current skid: {current_skid}")
                 
@@ -178,13 +178,13 @@ def monitor():
                     # update PIDs
                     roll_PID.update(current_roll)
                     pitch_PID.update(current_pitch)
-                    #rudder_PID.update(current_rudder)
-                    #skid_PID.update(current_skid)
+                    rudder_PID.update(current_rudder)
+                    skid_PID.update(current_skid)
 
                     # update control outputs
                     new_ail_ctrl = normalize(roll_PID.output)
                     new_ele_ctrl = normalize(pitch_PID.output)
-                    new_rudder_ctrl = normalize(rudder_PID.output,min=-1,max=1)
+                    new_rudder_ctrl = normalize(skid_PID.output,min=-1,max=1)
 
                     #sending actual control values to XPlane
                     #igs.output_set_double("Control_Pitch", new_ele_ctrl)
