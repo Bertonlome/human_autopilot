@@ -55,7 +55,7 @@ rudder_PID = PID.PID(P_skid, I_skid, D)
 # pitch = 2 means slightly nose up, which is required for level flight
 desired_roll = 0
 desired_pitch = 10
-desired_altitude = 4500
+desired_altitude = 1500
 desired_skid = 0
 
 
@@ -123,9 +123,11 @@ def monitor():
                 onground = multi_DREFs[2][0]
                 current_rudder = ctrl[2]
                 current_skid = client.getDREF("sim/cockpit2/gauges/indicators/slip_deg")[0]
+                print(f"current skid: {current_skid}")
+                
 
-                print("Rudder position:", current_rudder)
-                print("Skid position:", current_skid)
+                #print("Rudder position:", current_rudder)
+                #print("Skid position:", current_skid)
                 
                 # if the plane is on ground, set the park brake and throttle to 0
                 if (start):
@@ -135,17 +137,20 @@ def monitor():
                     #time.sleep(5)
                     #igs.output_set_double("Parking_Brake", 0)
                     #agent.control_parking_brake_o = 0
-                    client.sendDREF("sim/flightmodel/controls/parkbrake", 0.0)
-                    time.sleep(5)
                     client.sendDREF("sim/cockpit2/engine/actuators/throttle_ratio_all", 1.0)
-                    time.sleep(5)
+                    time.sleep(7)
+                    client.sendDREF("sim/flightmodel/controls/parkbrake", 0.0)
+                    user_requested_heading = agent.heading_i
+                    print(f"runway heading: {user_requested_heading}")
                     start = False
                     
                 #print(current_asi)
                 if(current_asi > SPEED):  
+                    #print("speed > 90; roll PID is active")
                     marge_derreur = 2 # 5 degrees of error
                     #print(f"Agent heading input = {agent.heading_i}")
-                    user_requested_heading = agent.heading_t_i #roll_PID.user_requested_heading
+                    if agent.heading_t_i is not None:
+                        user_requested_heading = agent.heading_t_i #roll_PID.user_requested_heading
                     current_hdg
                     # Calcul de la différence minimale d'angle
                     if user_requested_heading is not None:
@@ -163,8 +168,7 @@ def monitor():
                     
                     # update outer loops first
                     #print (agent.int_alt)
-                    if agent.int_alt_target is not None:
-                        altitude_PID.SetPoint = agent.int_alt_target
+                    altitude_PID.SetPoint = agent.int_alt_target if agent.int_alt_target is not None else desired_altitude
                     altitude_PID.update(current_altitude)
                     #skid_PID.update(current_skid)
                     # if alt=12000, setpoint = 10000, the error is 2000. if P=0.1, output will be 2000*0.1=200
