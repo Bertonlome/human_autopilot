@@ -13,7 +13,7 @@ SPEED = 90 # this is the speed of the plane in XPlane, used to determine if we a
 refresh_rate = 0.1
 port = 5670
 agent_name = "Human_Autopilot"
-device = "Local Area Connection* 10" # default device, can be changed in command line
+device = "wlo1" # default device, can be changed in command line
 verbose = False
 is_interrupted = False
 start_heading = None
@@ -35,7 +35,7 @@ last_update = start
 # defining the initial PID values
 P_pitch = 0.1 # PID library default = 0.2
 P_roll = 0.01
-P_skid = 0.1
+P_skid = 0.025
 I_pitch = P_pitch/10 # default = 0
 I_roll = P_roll/10
 I_skid = P_skid/10
@@ -178,13 +178,18 @@ def monitor():
                     # update PIDs
                     roll_PID.update(current_roll)
                     pitch_PID.update(current_pitch)
-                    rudder_PID.update(current_rudder)
-                    skid_PID.update(current_skid)
+                    if (current_skid > 0.7 or current_skid < -0.7):
+                        rudder_PID.update(current_rudder)
+                        skid_PID.update(current_skid)
+                        new_rudder_ctrl = normalize(skid_PID.output,min=-1,max=1)
+                    else:
+                        new_rudder_ctrl = current_rudder
+                    
+                    print(f"new rudder control: {new_rudder_ctrl}")
 
                     # update control outputs
                     new_ail_ctrl = normalize(roll_PID.output)
                     new_ele_ctrl = normalize(pitch_PID.output)
-                    new_rudder_ctrl = normalize(skid_PID.output,min=-1,max=1)
 
                     #sending actual control values to XPlane
                     #igs.output_set_double("Control_Pitch", new_ele_ctrl)
@@ -288,11 +293,13 @@ def double_input_callback(io_type, name, value_type, value, my_data):
         agent_object.pitch_t_i = value
     if name == "Heading":
         agent_object.heading_i = value
-    if name == "Headin_Target":
+    if name == "Heading_Target":
+        print(f"Heading target input: {value}")
         agent_object.heading_t_i = value
     if name == "Altitude":
         agent_object.int_alt = value
     if name == "Altitude_Target":
+        print(f"Altitude target input: {value}")
         agent_object.int_alt_target = value
     if name == "Airspeed":
         agent_object.airspeed_i = value
@@ -382,6 +389,12 @@ if __name__ == "__main__":
     igs.observe_input("Airspeed", double_input_callback, agent)
     igs.observe_input("Vertical_Speed", double_input_callback, agent)
     igs.observe_input("Roll",double_input_callback,agent)
+    igs.observe_input("Pitch_Target", double_input_callback, agent)
+    igs.observe_input("Heading_Target", double_input_callback, agent)
+    igs.observe_input("Airspeed_Target", double_input_callback, agent)
+    igs.observe_input("Altitude_Target", double_input_callback, agent)
+    igs.observe_input("Vertical_Speed_Target", double_input_callback, agent)
+    igs.observe_input("Roll_Target", double_input_callback, agent)
 
 
     igs.log_set_console(True)
