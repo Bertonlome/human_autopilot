@@ -24,7 +24,7 @@ from echo import *
 refresh_rate = 0.1
 port = 5670
 agent_name = "Human_Autopilot"
-device = "wlp3s0"
+device = "A7500_NETGEAR"
 verbose = False
 is_interrupted = False
 start_heading = None
