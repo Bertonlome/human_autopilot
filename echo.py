@@ -27,6 +27,7 @@ class Singleton(type):
 class Echo(metaclass=Singleton):
     def __init__(self):
         # inputs
+        self.reset_i = None
         self.on_off_i = None
         self.int_alt = None
         self.int_alt_target = None
